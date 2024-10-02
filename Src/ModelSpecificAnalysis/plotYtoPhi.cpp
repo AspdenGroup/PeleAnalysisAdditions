@@ -1,3 +1,10 @@
+/*
+  A tool calculates the equiverlance ratio given a pltfile
+  (currently only works for Hydrogen or Carbon Fuels)
+*/
+
+
+
 #include <string>
 #include <iostream>
 #include <set>
