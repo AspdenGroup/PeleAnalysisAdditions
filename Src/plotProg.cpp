@@ -1,3 +1,13 @@
+/*
+  --- plotProg.cpp ---
+
+  A tool calculates the progress variable of a given number of variables from a pltfile.
+  The tool can also normalise the a given variables by a specific pltfile.
+
+*/
+
+
+
 #include <string>
 #include <iostream>
 #include <set>
