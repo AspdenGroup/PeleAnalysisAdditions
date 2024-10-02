@@ -1,4 +1,4 @@
-PELE_ANALYSIS_HOME = ../..
+PELE_ANALYSIS_HOME = ../../../PeleAnalysis
 
 # AMReX
 DIM        = 3
@@ -15,16 +15,10 @@ USE_CUDA   = FALSE
 USE_HIP    = FALSE
 TINY_PROFILE = FALSE
 
-EBASE=bruno
-EBASE=plotXtoY
-EBASE=plotYtoX
-EBASE=testQPDtools
-EBASE=plotTransportCoeff
-
 CEXE_sources += $(EBASE).cpp
 
 Eos_Model       = Fuego
-Chemistry_Model = drm19
+Chemistry_Model = LiDryer
 Transport_Model = Simple
 
 Blocs   := .

@@ -1,3 +1,0 @@
-CEXE_sources += util.cpp
-CEXE_headers += util.H
-
