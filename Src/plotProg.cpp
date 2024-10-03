@@ -81,6 +81,8 @@ main (int   argc,
 
     // output data names
     Vector<std::string> outVarNames = inVarNames;
+    for (int comp = 0; comp < nComp; comp++)
+	outVarNames[comp] = inVarNames[comp]+"_prog";
     
     // data used to normalise
     DataServices normaliseDataServices(normalisePltName, fileType);
