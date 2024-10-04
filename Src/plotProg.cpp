@@ -1,13 +1,3 @@
-/*
-  --- plotProg.cpp ---
-
-  A tool calculates the progress variable of a given number of variables from a pltfile.
-  The tool can also normalise the a given variables by a specific pltfile.
-
-*/
-
-
-
 #include <string>
 #include <iostream>
 #include <set>
@@ -32,8 +22,8 @@ print_usage (int,
 std::string
 getFileRoot(const std::string& infile)
 {
-  std::vector<std::string> tokens = Tokenize(infile,std::string("/"));
-  return tokens[tokens.size()-1];
+    std::vector<std::string> tokens = Tokenize(infile,std::string("/"));
+    return tokens[tokens.size()-1];
 }
 
 int
@@ -51,56 +41,72 @@ main (int   argc,
       print_usage(argc,argv);
 
     if (pp.contains("verbose"))
-      AmrData::SetVerbose(true);
+      AmrData::SetVerbose(false);
 
     std::string plotFileName; pp.get("infile",plotFileName);
+    std::string fuelName="H2"; pp.query("fuelName",fuelName);
     DataServices::SetBatchMode();
     Amrvis::FileType fileType(Amrvis::NEWPLT);
 
-    // pass outfile name
-    std::string outfile(getFileRoot(plotFileName) + "_prog");
-    pp.query("outfile",outfile);
-
-    // get progress variable names
-    int nComp(pp.countval("vars"));
-    if (nComp <= 0)  Abort("No progress varbiable names given");
-    Vector<std::string> inVarNames;
-    inVarNames.resize(nComp);
-    pp.getarr("vars",inVarNames);
-    
-    // normalise by specific plotfile
-    std::string normalisePltName; pp.query("normalisePltName",normalisePltName);
-    bool normalisePlt=1;
-    if (normalisePltName.empty())
-	normalisePlt=0;
-    
-    Print() << "progress variable names: ";
-    for (int comp = 0; comp < nComp; comp++)
-	Print() << inVarNames[comp] << " ";
-    Print() << "\n";
-
-    // output data names
-    Vector<std::string> outVarNames = inVarNames;
-    for (int comp = 0; comp < nComp; comp++)
-	outVarNames[comp] = inVarNames[comp]+"_prog";
-    
-    // data used to normalise
-    DataServices normaliseDataServices(normalisePltName, fileType);
-    if( ! normaliseDataServices.AmrDataOk() && 1 == normalisePlt) {
-	DataServices::Dispatch(DataServices::ExitRequest, NULL);
-    }
-    AmrData& normaliseAmrData = normaliseDataServices.AmrDataRef(); // this does send a runtime warning error if not normalising
-
-    // data to process
     DataServices dataServices(plotFileName, fileType);
     if( ! dataServices.AmrDataOk()) {
-	DataServices::Dispatch(DataServices::ExitRequest, NULL);
+      DataServices::Dispatch(DataServices::ExitRequest, NULL);
+      // ^^^ this calls ParallelDescriptor::EndParallel() and exit()
     }
     AmrData& amrData = dataServices.AmrDataRef();
+
+    bool initNormalise=false;
+
+    DataServices dataServicesInit("plt00000", fileType);
+    if (!dataServicesInit.AmrDataOk()) {
+      std::cout << "Cannot find initial condition - normalising using current plotfile" << std::endl;
+    } else {
+      if (ParallelDescriptor::IOProcessor())
+	std::cout << "Normalising using initial condition" << std::endl;
+      initNormalise=true;
+    }
+
+    AmrData& initAmrData = dataServicesInit.AmrDataRef();
+    
+
+    //init_mech();
 
     int finestLevel = amrData.FinestLevel();
     pp.query("finestLevel",finestLevel);
     int Nlev = finestLevel + 1;
+
+    int idYin = -1;
+    int idTin = -1;
+    //Vector<std::string> spec_names = GetSpecNames();
+    const Vector<std::string>& plotVarNames = amrData.PlotVarNames();
+    const std::string spName= "Y("+fuelName+")";
+    const std::string TName= "temp";
+    //std::cout << spName << std::endl;
+    for (int i=0; i<plotVarNames.size(); ++i)
+    {
+      if (plotVarNames[i] == spName) idYin = i;
+      if (plotVarNames[i] == TName) idTin = i;
+    }
+    if (idYin<0 || idTin<0)
+      Print() << "Cannot find required data in pltfile" << std::endl;
+    const int nCompIn  = 2;
+    //const int idPhiout = 0;
+    const int nCompOut = 2;
+    Vector<std::string> outNames(nCompOut);
+    Vector<std::string> inNames(nCompIn);
+    Vector<int> destFillComps(nCompIn);
+    
+    const int idTlocal = 0; // T here
+    const int idYlocal = 1; // Y here
+
+    destFillComps[idTlocal] = idTlocal;
+    destFillComps[idYlocal] = idYlocal;
+    
+    inNames[idTlocal] = "temp";
+    inNames[idYlocal] =  "Y("+fuelName+")";
+    outNames[idTlocal] = "prog_temp";
+    outNames[idYlocal] = "prog_"+fuelName;
+
 
     Vector<int> is_per(AMREX_SPACEDIM,1);
     pp.queryarr("is_per",is_per,0,AMREX_SPACEDIM);
@@ -108,66 +114,69 @@ main (int   argc,
     for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
         Print() << is_per[idim] << " ";
     }
-
+    
+    Vector<Geometry> geoms(Nlev);
     RealBox rb(&(amrData.ProbLo()[0]),&(amrData.ProbHi()[0]));
 
-    Vector<MultiFab> outdata(Nlev);
-    Vector<Geometry> geoms(Nlev);
-
+    
+    Vector<std::unique_ptr<MultiFab>> outdata(Nlev);
     const int nGrow = 0;
-
-    Vector<int> destFillComps(nComp);
-    for (int i=0; i<nComp; ++i) destFillComps[i] = i;
-
-    // find min/max to be normalised
-    Vector<Real> prog_burnt(nComp);
-    Vector<Real> prog_unburnt(nComp);
-
-    Print() << "nComp = " << nComp << std::endl;
-    for (int comp=0; comp < nComp; comp++) {
-	if (normalisePlt) {
-	    normaliseAmrData.MinMax(normaliseAmrData.ProbDomain()[0],inVarNames[comp],0,prog_burnt[comp], prog_unburnt[comp]);    
-	}
-	else {
-	    amrData.MinMax(amrData.ProbDomain()[0],inVarNames[comp],0,prog_burnt[comp], prog_unburnt[comp]);
-	}
+    int b[3] = {1, 1, 1};
+    Real Y_fuel_u, Y_fuel_b, T_u, T_b;
+    if(initNormalise) {
+      if(initAmrData.MinMax(initAmrData.ProbDomain()[0],"Y("+fuelName+")",0,Y_fuel_b,Y_fuel_u) && initAmrData.MinMax(initAmrData.ProbDomain()[0],"temp",0,T_u,T_b)) {
+	if (ParallelDescriptor::IOProcessor())
+	  std::cout << "Found min/max" << std::endl;
+      } else {
+	std::cout << "Could not find min/max" << std::endl;
+	DataServices::Dispatch(DataServices::ExitRequest, NULL);
+      }
+    } else {
+       if(amrData.MinMax(amrData.ProbDomain()[0],"Y("+fuelName+")",0,Y_fuel_b,Y_fuel_u) && amrData.MinMax(amrData.ProbDomain()[0],"temp",0,T_u,T_b)){
+	 if (ParallelDescriptor::IOProcessor())
+	   std::cout << "Found min/max" << std::endl;
+       } else {
+	 std::cout << "Could not find min/max" << std::endl;
+	 DataServices::Dispatch(DataServices::ExitRequest, NULL);
+       }
     }
    
-    for (int lev = 0; lev < Nlev; ++lev) {      
+
+    for (int lev=0; lev<Nlev; ++lev)
+    {
       const BoxArray ba = amrData.boxArray(lev);
       const DistributionMapping dm(ba);
-
-      outdata[lev] = MultiFab(ba,dm,nComp,nGrow);
-      MultiFab indata(ba,dm,nComp,nGrow);
+      outdata[lev].reset(new MultiFab(ba,dm,nCompOut,nGrow));
+      MultiFab indata(ba,dm,nCompIn,nGrow);
 
       int coord = 0;
       geoms[lev] = Geometry(amrData.ProbDomain()[lev],&rb, coord, &(is_per[0]));            
       Print() << "Reading data for level " << lev << std::endl;
-      amrData.FillVar(indata,lev,inVarNames,destFillComps);
-      Print() << "Data has been read for level " << lev << std::endl;
-      
-#ifdef AMREX_USE_OMP
-#pragma omp parallel if (Gpu::notInLaunchRegion())
-#endif
+      amrData.FillVar(indata,lev,inNames,destFillComps);
       for (MFIter mfi(indata,TilingIfNotGPU()); mfi.isValid(); ++mfi)
-	{
-	  const Box& bx = mfi.tilebox();
-	  auto const& out_a = outdata[lev].array(mfi);
-	  auto const& in_a = indata.array(mfi);
-	  amrex::ParallelFor(bx, [=]
-			     AMREX_GPU_DEVICE (int i, int j, int k) noexcept
-	      {
-		  for (int n = 0; n < nComp; n++) {
-		      out_a(i,j,k,n) = (in_a(i,j,k,n) - prog_unburnt[n]) / (prog_burnt[n] - prog_unburnt[n]);
-		  }
-	      });
-	}
+      {
+	
+        const Box& bx = mfi.tilebox();
+	Array4<Real> const& temp  = indata.array(mfi);
+        Array4<Real> const& Y_fuel  = indata.array(mfi);
+        Array4<Real> const& prog_temp = (*outdata[lev]).array(mfi);
+        Array4<Real> const& prog_fuel = (*outdata[lev]).array(mfi);
+
+        AMREX_PARALLEL_FOR_3D ( bx, i, j, k,
+        {
+	  prog_temp(i,j,k,idTlocal) = (temp(i,j,k,idTlocal)-T_u)/(T_b-T_u);
+          prog_fuel(i,j,k,idYlocal) = 1-Y_fuel(i,j,k,idYlocal)/Y_fuel_u;
+        });
+      }
+
+      Print() << "Derive finished for level " << lev << std::endl;
     }
-    
+
+    std::string outfile(getFileRoot(plotFileName) + "_prog");
     Print() << "Writing new data to " << outfile << std::endl;
     Vector<int> isteps(Nlev, 0);
     Vector<IntVect> refRatios(Nlev-1,{AMREX_D_DECL(2, 2, 2)});
-    amrex::WriteMultiLevelPlotfile(outfile, Nlev, GetVecOfConstPtrs(outdata), outVarNames,
+    amrex::WriteMultiLevelPlotfile(outfile, Nlev, GetVecOfConstPtrs(outdata), outNames,
                                    geoms, 0.0, isteps, refRatios);
   }
   Finalize();
