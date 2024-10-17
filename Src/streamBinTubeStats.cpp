@@ -9,7 +9,7 @@
 
 using namespace amrex;
 
-#include <streamBinTubeStats_TLH.H>
+#include <streamBinTubeStats.H>
 
 int
 main (int   argc,
