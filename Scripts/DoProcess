@@ -1,0 +1,122 @@
+#!/bin/bash
+#SBATCH --job-name=DoProcess
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=128
+#SBATCH --cpus-per-task=1
+#SBATCH --account=e767
+#SBATCH --partition=standard
+#SBATCH --qos=standard
+
+set -x
+
+# normalisation for temperature
+export T0=300
+export TAD=1212.7
+
+# normalise integral by rhoY (negative for I_R) 
+export RHOY=-0.00959
+
+# PKZ normalisation length (want about 2 * l_s)
+export PKZLS=0.000698
+
+# progress isovalue 
+export PROG_H2=0.9
+
+# decimate to this many elements
+export NPTS=150000
+
+# streamline options
+export NSTEPSPERCELL=2
+export NCELLSPERLF=12
+export NLF=2
+export HRK=`echo "1./${NSTEPSPERCELL}" | bc -l`
+export NSTEPS=`echo "${NLF}*${NCELLSPERLF}*${NSTEPSPERCELL}" | bc -l`
+
+for PLT in plt26300f; do
+
+    export OMP_NUM_THREADS=1
+
+    srun ./grad3d.gnu.x86-rome.MPI.ex is_per= 1 1 0 infile= ${PLT} gradVar= temp
+
+    # warning: looks for plt00000 for bounds    
+    srun ./plotProg3d.gnu.x86-rome.MPI.ex is_per= 1 1 0 infile= ${PLT}
+    
+    # curvature needs velocities to do strain
+    srun ./combinePlts3d.gnu.x86-rome.MPI.ex is_per= 1 1 0 \
+	 infiles= ${PLT} ${PLT}_prog \
+	 vars= x_velocity y_velocity z_velocity prog_H2 \
+         outfile=${PLT}_prog_comb
+
+    srun ./curvature3d.gnu.x86-rome.MPI.ex inputs.curvature \
+	 progressName= prog_H2 infile= ${PLT}_prog_comb outfile= ${PLT}_curv
+
+    # might want to add phi back in
+    srun ./combinePlts3d.gnu.x86-rome.MPI.ex is_per= 1 1 0 \
+	 infiles= ${PLT} ${PLT}_gt ${PLT}_prog ${PLT}_curv \
+	 vars= x_velocity y_velocity z_velocity \
+	 temp I_R\(H2\) HeatRelease Y\(H2\) \
+    	 prog_H2 MeanCurvature_prog_H2 GaussianCurvature_prog_H2 \
+	 temp_gx temp_gy temp_gz StrainRate_prog_H2 \
+	 FlameNormalX_prog_H2 FlameNormalY_prog_H2 FlameNormalZ_prog_H2 \
+         VelFlameNormal \|\|gradtemp\|\| \
+         outfile=${PLT}_comb
+
+    rm -fr ${PLT}_{gt,prog,prog_comb,curv} &
+
+    #
+    #
+    #
+
+    # warning: setting periodic here appears to break things...    
+    srun ./isosurface3d.gnu.x86-rome.MPI.ex comps= 11 \
+	 isoCompName= prog_H2 isoVal= ${PROG_H2} \
+	 infile= ${PLT}_comb
+
+    #
+    # 
+    #
+    
+    ./decimateMEF3d.gnu.x86-rome.ex \
+	-t $NPTS \
+	${PLT}_comb_prog_H2_${PROG_H2}.mef > \
+	${PLT}_comb_prog_H2_${PROG_H2}_${NPTS}.mef
+
+    #
+    #
+    #
+    
+    srun ./partStream3d.gnu.x86-rome.MPI.ex infile= ${PLT}_comb \
+	 vectorField= FlameNormal{X,Y,Z}_prog_H2 \
+	 vars= temp \|\|gradtemp\|\| I_R\(H2\) HeatRelease \
+	 MeanCurvature_prog_H2 GaussianCurvature_prog_H2 StrainRate_prog_H2 \
+	 isoFile= ${PLT}_comb_prog_H2_${PROG_H2}_${NPTS}.mef \
+	 cSpace= 0 is_per= 1 1 0 \
+	 hRK= ${HRK} Nsteps= ${NSTEPS} \
+	 outfile= ${PLT}_comb_prog_H2_${PROG_H2}_${NPTS} 
+
+    #
+    #
+    #
+    
+    export OMP_NUM_THREADS=128
+
+    ./streamBinTubeStats3d.gnu.x86-rome.OMP.ex \
+	infile= ${PLT}_comb_prog_H2_${PROG_H2}_${NPTS}_streamBin \
+	avgComps= HeatRelease MeanCurvature_prog_H2 StrainRate_prog_H2 \
+	derComps= flameSpeed flameThickness principalCurvatureZones \
+	reacTemp= ${T0} prodTemp= ${TAD} tempGradVar= \|\|gradtemp\|\| \
+	FCRVar= I_R\(H2\) rhoY= ${RHOY} percOfMean= -1 pkzLength= ${PKZLS}
+
+    #
+    #
+    #
+
+    rm -fr ${PLT}_comb \
+       ${PLT}_comb_prog_H2_${PROG_H2}.mef \
+       ${PLT}_comb_prog_H2_${PROG_H2}_${NPTS}.mef \
+       ${PLT}_comb_prog_H2_${PROG_H2}_${NPTS}_streamBin
+
+    echo Finished processing ${PLT}
+    
+done

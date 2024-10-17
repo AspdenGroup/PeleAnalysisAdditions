@@ -1,0 +1,19 @@
+# I/O 
+verbose        = 1 
+
+# Progress variable
+progressName     = prog_H2
+floorIt          = 1
+useFileMinMax    = 1 
+do_smooth        = 1 
+smoothing_time   = 1.0e-11
+do_gaussCurv     = 1
+
+# Velocity computations
+do_strain       = 1
+getStrainTensor = 0
+do_velnormal    = 1
+
+# Case options
+is_per   = 1 1 0  
+sym_dir  = 0 0 0 
