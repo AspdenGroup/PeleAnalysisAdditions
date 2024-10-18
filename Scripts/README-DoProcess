@@ -6,6 +6,7 @@ As a rule-of-thumb for the decimation tool, I think the way to go is to:
 - look at the area of the surface (comes from streamBinTubeStats, but we should add it as a default report to the isosurface tool)
 - take the area of the surface, divide by dx[finest]^2 to get the number of faces there would be if they were all the same size as a fine-level cell
 - take the number and divide by about 5; that should give a sensible number for $NPTS
+[actually, 5 may be a bit too much; 2 can be ok, so 2-5 may be a better range]
  
 The other options at the top of the script control how far away to go from the flame surface:
 - NSTEPSPERCELL is the number of RK steps to take per cell 2 should be fine, but you could go to 3 or 4 if you really want to
