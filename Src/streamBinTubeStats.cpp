@@ -837,7 +837,7 @@ void readStreamBin(std::string infile,
   // now loop over binary files
   //
   for (int iFile=0; iFile<nFiles; iFile++) {
-    Print() << "Reading file " << iFile << std::endl;
+    //Print() << "Reading file " << iFile << std::endl;
     // read binary stream file
     std::string rootName = infile + "/str_";
     std::string fileName = Concatenate(rootName,iFile) + ".bin";

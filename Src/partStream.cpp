@@ -141,7 +141,13 @@ main (int   argc,
     Vector<int> ratios(finestLevel);
     int nComp = AMREX_SPACEDIM + nVars;
 
-    
+    Print() << "vectorField: " << std::endl;
+    for (int i=0; i<AMREX_SPACEDIM; i++) 
+      Print() << vectorVarNames[i] << std::endl;
+
+    Print() << "vars: " << std::endl;
+    for (int i=0; i<AMREX_SPACEDIM; i++) 
+      Print() << inVarNames[i] << std::endl;
     
     // get base for output files
     std::string outfile = infile;
@@ -250,6 +256,8 @@ main (int   argc,
     //Real dt = hRK;// * geoms[finestLevel].CellSize()[0];
     for (int step=0; step<Nsteps-1; ++step)
     {
+      //Print() << "   ... taking step " << step << std::endl;
+      
       // find next location
       spc.ComputeNextLocation(step,hRK,vectorField,cSpace);
 
