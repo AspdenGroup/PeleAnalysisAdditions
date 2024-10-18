@@ -1,0 +1,19 @@
+This was tested on one of Arnab's freely-propagating flame in a box simulations
+ 
+It looks like there's still a bit of an issue with a small number of elements, but I'll try to figure that out later.
+ 
+As a rule-of-thumb for the decimation tool, I think the way to go is to:
+- look at the area of the surface (comes from streamBinTubeStats, but we should add it as a default report to the isosurface tool)
+- take the area of the surface, divide by dx[finest]^2 to get the number of faces there would be if they were all the same size as a fine-level cell
+- take the number and divide by about 4 or 5; that should give a sensible number for $NPTS
+ 
+The other options at the top of the script control how far away to go from the flame surface:
+- NSTEPSPERCELL is the number of RK steps to take per cell 2 should be fine, but you could go to 3 or 4 if you really want to
+- NCELLSPERLF is the number of fine-level cells per flame thickness (we usually work to about 12)
+- NLF is the number of flame thicknesses to go (in each direction) from the flame surface; 2 should do it, but again you could do more (but you run the risk of running into problematic regions)
+ 
+The case-specific options are:
+- reactant and product temperatures T0 and TAD
+- RHOY product of reactant density and reactant fuel mass fraction (go look at plt00000 for example) -- we are going to want to set this to be negative because we're integration species production rate I_R rather than FuelConsumptionRate
+- PKZLS is the mean local flame thickness that we use to classify the prinicpal curvature zones as flat (can get from streamBinTubeStats)
+

@@ -17,7 +17,7 @@ export TAD=1212.7
 # normalise integral by rhoY (negative for I_R) 
 export RHOY=-0.00959
 
-# PKZ normalisation length (want about 2 * l_s)
+# PKZ normalisation length (mean local thermal thickness; from streamBinTubeStats)
 export PKZLS=0.000698
 
 # progress isovalue 
